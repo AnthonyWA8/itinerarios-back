@@ -25,7 +25,8 @@ class GenerateItineraryUseCase:
     """
 
     MAX_RETRIES = 2
-    N_CANDIDATES = 2  # número de itinerarios generados en paralelo para best-of-N
+    N_CANDIDATES = 1  # número de itinerarios generados en paralelo para best-of-N
+    # NOTA: subir a 3 para la demo final (best-of-3) si el rate limit de Groq lo permite.
 
     def __init__(
         self,

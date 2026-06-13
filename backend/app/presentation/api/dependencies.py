@@ -12,8 +12,7 @@ from app.infrastructure.database.repositories.sqlalchemy_feedback_repository imp
 from app.infrastructure.security.password_hasher import PasswordHasher
 from app.infrastructure.security.jwt_handler import JWTHandler
 from app.infrastructure.llm.groq_client import GroqLLMService
-from app.infrastructure.rag.embedding_service import EmbeddingService
-from app.infrastructure.rag.retriever import SimpleRAGService
+from app.infrastructure.rag.lightweight_retriever import LightweightRAGService
 
 from app.application.use_cases.auth.register_user import RegisterUserUseCase
 from app.application.use_cases.auth.login_user import LoginUserUseCase
@@ -36,7 +35,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 # Singletons (sin estado por request)
 _password_hasher = PasswordHasher()
 _jwt_handler = JWTHandler()
-_embedding_service = EmbeddingService()
 _itinerary_validator = ItineraryValidator()
 _reward_model = ItineraryRewardModel()
 _llm_service = GroqLLMService()
@@ -60,8 +58,8 @@ def get_feedback_repository(session: DbSession) -> SQLAlchemyFeedbackRepository:
     return SQLAlchemyFeedbackRepository(session)
 
 
-def get_rag_service(session: DbSession) -> SimpleRAGService:
-    return SimpleRAGService(session, _embedding_service)
+def get_rag_service() -> LightweightRAGService:
+    return LightweightRAGService()
 
 
 # ---------- Use cases: Auth ----------
@@ -81,7 +79,7 @@ def get_login_use_case(
 # ---------- Use cases: Itinerary ----------
 
 def get_generate_itinerary_use_case(
-    rag: Annotated[SimpleRAGService, Depends(get_rag_service)],
+    rag: Annotated[LightweightRAGService, Depends(get_rag_service)],
     feedback_repo: Annotated[SQLAlchemyFeedbackRepository, Depends(get_feedback_repository)],
 ) -> GenerateItineraryUseCase:
     return GenerateItineraryUseCase(_llm_service, rag, _itinerary_validator, _reward_model, feedback_repo)
