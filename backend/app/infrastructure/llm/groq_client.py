@@ -19,8 +19,7 @@ from app.infrastructure.llm.prompt_templates import (
     build_refine_prompt,
 )
 
-# Mapeo de tipos no estándar que el LLM podría inventar -> tipos válidos del enum.
-# Actúa como red de seguridad ante alucinaciones de categorías.
+
 ACTIVITY_TYPE_FALLBACKS: dict[str, ActivityType] = {
     "beach": ActivityType.OUTDOOR,
     "nature": ActivityType.OUTDOOR,
