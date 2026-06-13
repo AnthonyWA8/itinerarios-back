@@ -15,3 +15,5 @@ class PasswordHasher:
 
     def verify(self, password: str, password_hash: str) -> bool:
         return self._ctx.verify(self._truncate(password), password_hash)
+    
+    
