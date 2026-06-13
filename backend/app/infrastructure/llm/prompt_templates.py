@@ -74,6 +74,13 @@ Reglas obligatorias:
 6. El idioma de salida debe ser español.
 7. No incluyas contenido sesgado, discriminatorio ni inapropiado. Mantén un tono profesional, inclusivo y positivo.
 8. Responde ÚNICAMENTE con el JSON solicitado, sin explicaciones, sin markdown, sin backticks.
+9. El campo "type" de cada actividad DEBE ser EXACTAMENTE uno de estos valores literales (sin excepción, sin inventar otros): "food", "culture", "outdoor", "leisure", "transport", "accommodation".
+   - Actividades de playa, parques, senderismo, naturaleza -> usa "outdoor".
+   - Tiempo libre, compras, spa, descanso -> usa "leisure".
+   - Museos, monumentos, tours culturales -> usa "culture".
+   - Comidas, restaurantes, cafés -> usa "food".
+   - Traslados, vuelos, taxis -> usa "transport".
+   - Hoteles, check-in/check-out -> usa "accommodation".
 
 {ITINERARY_JSON_SCHEMA_DESCRIPTION}
 

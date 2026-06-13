@@ -19,6 +19,38 @@ from app.infrastructure.llm.prompt_templates import (
     build_refine_prompt,
 )
 
+# Mapeo de tipos no estándar que el LLM podría inventar -> tipos válidos del enum.
+# Actúa como red de seguridad ante alucinaciones de categorías.
+ACTIVITY_TYPE_FALLBACKS: dict[str, ActivityType] = {
+    "beach": ActivityType.OUTDOOR,
+    "nature": ActivityType.OUTDOOR,
+    "adventure": ActivityType.OUTDOOR,
+    "hiking": ActivityType.OUTDOOR,
+    "sightseeing": ActivityType.CULTURE,
+    "shopping": ActivityType.LEISURE,
+    "nightlife": ActivityType.LEISURE,
+    "relaxation": ActivityType.LEISURE,
+    "spa": ActivityType.LEISURE,
+    "museum": ActivityType.CULTURE,
+    "tour": ActivityType.CULTURE,
+    "restaurant": ActivityType.FOOD,
+    "dining": ActivityType.FOOD,
+    "hotel": ActivityType.ACCOMMODATION,
+    "flight": ActivityType.TRANSPORT,
+    "travel": ActivityType.TRANSPORT,
+}
+
+
+def _parse_activity_type(raw_type: str) -> ActivityType:
+    try:
+        return ActivityType(raw_type)
+    except ValueError:
+        fallback = ACTIVITY_TYPE_FALLBACKS.get(raw_type.lower())
+        if fallback:
+            return fallback
+        # Último recurso: tipo neutro para no descartar el itinerario completo.
+        return ActivityType.LEISURE
+
 
 class GroqLLMService(LLMService):
     """
@@ -78,7 +110,7 @@ class GroqLLMService(LLMService):
                         time=a["time"],
                         title=a["title"],
                         description=a["description"],
-                        type=ActivityType(a["type"]),
+                        type=_parse_activity_type(a["type"]),
                         cost=float(a["cost"]),
                         tip=a.get("tip"),
                     )
