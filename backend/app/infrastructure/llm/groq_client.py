@@ -98,6 +98,31 @@ class GroqLLMService(LLMService):
         except json.JSONDecodeError as e:
             raise ValueError(f"Respuesta del LLM no es JSON válido: {e}\nRaw: {raw[:500]}")
 
+        # --- Normalizacion de la estructura ---
+        # Distintos modelos (p. ej. gpt-oss tras retirar Llama de Groq) a veces
+        # envuelven el itinerario o devuelven listas donde esperamos objetos.
+        # Desenvolvemos los casos comunes para que el parser sea robusto.
+        if isinstance(data, list):
+            # El modelo devolvio una lista en el nivel superior -> tomamos el 1er objeto.
+            data = data[0] if data else {}
+        if isinstance(data, dict) and "days" not in data:
+            # El itinerario viene envuelto bajo una clave: {"itinerary": {...}}, etc.
+            for wrapper_key in ("itinerary", "plan", "result", "data", "response"):
+                inner = data.get(wrapper_key)
+                if isinstance(inner, dict) and "days" in inner:
+                    data = inner
+                    break
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Estructura inesperada del LLM (se esperaba un objeto). "
+                f"Tipo recibido: {type(data).__name__}. Raw: {raw[:500]}"
+            )
+        if "days" not in data:
+            raise ValueError(
+                f"El JSON del LLM no contiene 'days'. Claves recibidas: "
+                f"{list(data.keys())}. Raw: {raw[:500]}"
+            )
+
         days = [
             DayPlan(
                 day=d["day"],
@@ -119,7 +144,9 @@ class GroqLLMService(LLMService):
             for d in data["days"]
         ]
 
-        practical = data["practicalInfo"]
+        practical = data.get("practicalInfo") or {}
+        if isinstance(practical, list):
+            practical = practical[0] if practical else {}
 
         return Itinerary(
             id=None,
@@ -131,11 +158,11 @@ class GroqLLMService(LLMService):
             highlights=data.get("highlights", []),
             days=days,
             practical_info=PracticalInfo(
-                best_time_to_visit=practical["bestTimeToVisit"],
-                currency=practical["currency"],
-                language=practical["language"],
-                transportation=practical["transportation"],
-                accommodation=practical["accommodation"],
+                best_time_to_visit=practical.get("bestTimeToVisit", ""),
+                currency=practical.get("currency", ""),
+                language=practical.get("language", ""),
+                transportation=practical.get("transportation", ""),
+                accommodation=practical.get("accommodation", ""),
             ),
             preferences=preferences,
         )
