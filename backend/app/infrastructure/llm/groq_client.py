@@ -80,6 +80,10 @@ class GroqLLMService(LLMService):
         return self._parse_itinerary(raw, itinerary.preferences)
 
     async def _complete(self, user_prompt: str) -> str:
+        # NOTA: no se usa response_format={"type": "json_object"} porque los
+        # modelos de razonamiento (gpt-oss, tras retirar Llama de Groq) fallan
+        # con ese modo estricto (error 400 json_validate_failed). En su lugar se
+        # pide el JSON por prompt y se extrae de forma tolerante en _extract_json.
         response = await self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -87,14 +91,44 @@ class GroqLLMService(LLMService):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.7,
-            response_format={"type": "json_object"},
         )
         return response.choices[0].message.content
 
     @staticmethod
-    def _parse_itinerary(raw: str, preferences: TravelPreferences) -> Itinerary:
+    def _extract_json(raw: str) -> str:
+        """
+        Extrae el primer objeto JSON balanceado { ... } de la respuesta del LLM.
+        Tolera texto de razonamiento antes/después y bloques markdown ```json.
+        """
+        if raw is None:
+            raise ValueError("El LLM devolvio una respuesta vacia (None).")
+        text = raw.strip()
+        # Quita vallas de codigo markdown si las hubiera.
+        if "```" in text:
+            text = text.replace("```json", "```")
+            parts = text.split("```")
+            # Nos quedamos con el fragmento que contenga una llave de apertura.
+            for part in parts:
+                if "{" in part:
+                    text = part
+                    break
+        start = text.find("{")
+        if start == -1:
+            raise ValueError(f"El LLM no devolvio JSON. Salida: {raw[:500]}")
+        depth = 0
+        for i, ch in enumerate(text[start:], start=start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        raise ValueError(f"JSON incompleto/truncado en la salida del LLM: {raw[:500]}")
+
+    @classmethod
+    def _parse_itinerary(cls, raw: str, preferences: TravelPreferences) -> Itinerary:
         try:
-            data = json.loads(raw)
+            data = json.loads(cls._extract_json(raw))
         except json.JSONDecodeError as e:
             raise ValueError(f"Respuesta del LLM no es JSON válido: {e}\nRaw: {raw[:500]}")
 
