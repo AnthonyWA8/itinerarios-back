@@ -91,6 +91,11 @@ class GroqLLMService(LLMService):
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.7,
+            # Los modelos de razonamiento (gpt-oss) gastan tokens "pensando"
+            # antes de responder, y un itinerario largo ocupa bastante. Sin un
+            # limite alto, Groq corta el JSON a medias (truncado). 8000 da margen
+            # de sobra para el razonamiento + el itinerario completo.
+            max_tokens=8000,
         )
         return response.choices[0].message.content
 
