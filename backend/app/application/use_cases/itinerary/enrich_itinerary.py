@@ -19,6 +19,12 @@ from typing import Optional
 from app.domain.entities.itinerary import Activity, ActivityType, Itinerary, PlaceLocation
 from app.domain.services.places_service import GeoPoint, PlaceResult, PlacesService, PlacesSession
 
+
+def _describe(exc: BaseException) -> str:
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return f"{type(exc).__name__}: {exc}"
+
 logger = logging.getLogger(__name__)
 
 # Tipos de actividad que no suelen ocurrir en un lugar concreto verificable.
@@ -81,8 +87,8 @@ class ItineraryPlacesEnricher:
             report.timed_out = True
             logger.warning("Verificación MCP: se agotó el tiempo (%.0fs).", self._time_budget)
         except Exception as e:  # el itinerario se entrega igual
-            report.error = str(e)
-            logger.warning("Verificación MCP falló: %s", e)
+            report.error = _describe(e)
+            logger.warning("Verificación MCP falló: %s", report.error)
 
         logger.info(
             "Verificación MCP (%s): %d/%d lugares verificados.",
@@ -115,7 +121,7 @@ class ItineraryPlacesEnricher:
         try:
             results = await session.search(destination, limit=1)
         except Exception as e:
-            logger.info("No se pudo ubicar el destino '%s': %s", destination, e)
+            logger.warning("No se pudo ubicar el destino '%s': %s", destination, _describe(e))
             return None
         for r in results:
             if r.latitude is not None and r.longitude is not None:
@@ -136,7 +142,7 @@ class ItineraryPlacesEnricher:
         try:
             results = await session.search(query, limit=3, near=center, radius_m=radius)
         except Exception as e:
-            logger.info("No se pudo verificar '%s': %s", place, e)
+            logger.warning("No se pudo verificar '%s': %s", place, _describe(e))
             return
 
         best = self._pick(results, center)
