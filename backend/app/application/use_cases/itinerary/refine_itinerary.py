@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from app.domain.entities.itinerary import Itinerary
@@ -7,6 +8,7 @@ from app.application.use_cases.itinerary.validate_itinerary import (
     ItineraryValidator,
     ItineraryValidationError,
 )
+from app.application.use_cases.itinerary.enrich_itinerary import ItineraryPlacesEnricher
 
 
 class RefineItineraryUseCase:
@@ -22,7 +24,9 @@ class RefineItineraryUseCase:
         llm_service: LLMService,
         itinerary_repository: ItineraryRepository,
         validator: ItineraryValidator,
+        places_enricher: Optional[ItineraryPlacesEnricher] = None,
     ):
+        self._enricher = places_enricher
         self._llm = llm_service
         self._itineraries = itinerary_repository
         self._validator = validator
@@ -39,6 +43,8 @@ class RefineItineraryUseCase:
                 self._validator.validate(refined, itinerary.preferences)
                 refined.id = itinerary.id
                 refined.user_id = itinerary.user_id
+                if self._enricher is not None:
+                    await self._enricher.enrich(refined)
                 return refined
             except ItineraryValidationError as e:
                 last_error = str(e)

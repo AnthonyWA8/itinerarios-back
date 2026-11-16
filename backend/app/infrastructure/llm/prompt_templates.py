@@ -6,6 +6,8 @@ Técnicas aplicadas:
 - Few-shot: se inyecta un ejemplo de itinerario bien formado.
 - Contexto RAG: fragmentos recuperados se insertan como "información verificada".
 - Instrucciones de coherencia presupuestal y de horarios (apoya el validador).
+- Campo "place" con el nombre propio de cada lugar, que luego se verifica en un
+  servidor MCP de mapas (Google Maps o el servidor propio sobre OpenStreetMap).
 """
 
 from app.domain.entities.itinerary import Itinerary, TravelPreferences
@@ -32,6 +34,7 @@ Debes responder ÚNICAMENTE con un objeto JSON (sin texto adicional, sin markdow
           "description": string,
           "type": "food" | "culture" | "outdoor" | "leisure" | "transport" | "accommodation",
           "cost": number,
+          "place": string | null,
           "tip": string (opcional)
         }
       ]
@@ -56,9 +59,9 @@ Ejemplo de un día bien formado (para 1 día de un itinerario de Tokio, presupue
   "theme": "Llegada y primeras impresiones",
   "dailyBudget": 150,
   "activities": [
-    {"time": "14:00", "title": "Check-in y orientación", "description": "Llegada al hotel en Shinjuku, descanso breve y familiarización con el barrio.", "type": "accommodation", "cost": 60},
-    {"time": "16:30", "title": "Cruce de Shibuya", "description": "Primera inmersión en la energía de Tokio, observando el icónico cruce peatonal.", "type": "culture", "cost": 0, "tip": "Sube al Starbucks del segundo piso para la mejor vista."},
-    {"time": "19:30", "title": "Cena de bienvenida en izakaya", "description": "Cena tradicional japonesa en un izakaya local de Shibuya.", "type": "food", "cost": 35, "tip": "Pide el menú degustación si está disponible."}
+    {"time": "14:00", "title": "Check-in y orientación", "description": "Llegada al hotel en Shinjuku, descanso breve y familiarización con el barrio.", "type": "accommodation", "cost": 60, "place": null},
+    {"time": "16:30", "title": "Cruce de Shibuya", "description": "Primera inmersión en la energía de Tokio, observando el icónico cruce peatonal.", "type": "culture", "cost": 0, "place": "Cruce de Shibuya", "tip": "Sube al Starbucks del segundo piso para la mejor vista."},
+    {"time": "19:30", "title": "Cena de bienvenida en Omoide Yokocho", "description": "Cena tradicional japonesa en los pequeños izakayas del callejón Omoide Yokocho.", "type": "food", "cost": 35, "place": "Omoide Yokocho", "tip": "Pide el menú degustación si está disponible."}
   ]
 }
 """
@@ -81,6 +84,11 @@ Reglas obligatorias:
    - Comidas, restaurantes, cafés -> usa "food".
    - Traslados, vuelos, taxis -> usa "transport".
    - Hoteles, check-in/check-out -> usa "accommodation".
+10. El campo "place" de cada actividad es el nombre propio y real del lugar donde ocurre
+    (monumento, museo, parque, mercado, restaurante, barrio), tal como aparece en un mapa,
+    por ejemplo "Museo del Louvre" o "Parque del Retiro". Usa null cuando la actividad no
+    ocurre en un lugar concreto (traslados, tiempo libre genérico, check-in sin hotel definido).
+    No inventes lugares: estos nombres se verifican después en Google Maps / OpenStreetMap.
 
 {ITINERARY_JSON_SCHEMA_DESCRIPTION}
 
@@ -142,6 +150,7 @@ def build_refine_prompt(itinerary: Itinerary, instruction: str) -> str:
                         "description": a.description,
                         "type": a.type.value if hasattr(a.type, "value") else a.type,
                         "cost": a.cost,
+                        "place": a.place,
                         **({"tip": a.tip} if a.tip else {}),
                     }
                     for a in d.activities

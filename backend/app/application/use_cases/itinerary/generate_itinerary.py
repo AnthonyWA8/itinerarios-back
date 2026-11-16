@@ -7,6 +7,7 @@ from app.domain.repositories.feedback_repository import FeedbackRepository
 from app.domain.services.llm_service import LLMService
 from app.domain.services.rag_service import RAGService
 from app.application.use_cases.itinerary.reward_model import ItineraryRewardModel
+from app.application.use_cases.itinerary.enrich_itinerary import ItineraryPlacesEnricher
 from app.application.use_cases.itinerary.validate_itinerary import (
     ItineraryValidator,
     ItineraryValidationError,
@@ -22,6 +23,9 @@ class GenerateItineraryUseCase:
       4. Reward model (RL - best-of-N / rejection sampling): puntúa los candidatos
          válidos y selecciona el de mayor reward, considerando también feedback
          histórico de usuarios para destinos similares (RLHF-lite).
+      5. Verificación con MCP: consulta un servidor MCP de mapas (Google Maps o el
+         servidor propio sobre OpenStreetMap) para comprobar que los lugares existen
+         y añadir su dirección, coordenadas y enlace al mapa.
     """
 
     MAX_RETRIES = 2
@@ -35,12 +39,14 @@ class GenerateItineraryUseCase:
         validator: ItineraryValidator,
         reward_model: ItineraryRewardModel,
         feedback_repository: FeedbackRepository,
+        places_enricher: Optional[ItineraryPlacesEnricher] = None,
     ):
         self._llm = llm_service
         self._rag = rag_service
         self._validator = validator
         self._reward_model = reward_model
         self._feedback = feedback_repository
+        self._enricher = places_enricher
 
     async def execute(
         self,
@@ -93,4 +99,8 @@ class GenerateItineraryUseCase:
             key=lambda it: self._reward_model.score(it, preferences, historical_rating),
         )
         best.user_id = user_id
+
+        # MCP: verificar lugares reales y añadir ubicación (tolerante a fallos).
+        if self._enricher is not None:
+            await self._enricher.enrich(best)
         return best

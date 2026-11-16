@@ -21,6 +21,19 @@ class BudgetType(str, Enum):
 
 
 @dataclass
+class PlaceLocation:
+    """Ubicación real de una actividad, verificada con un servicio de mapas vía MCP."""
+    name: str
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    url: Optional[str] = None
+    rating: Optional[float] = None
+    source: str = "openstreetmap"  # "google" | "openstreetmap"
+    verified: bool = True
+
+
+@dataclass
 class Activity:
     time: str
     title: str
@@ -28,6 +41,10 @@ class Activity:
     type: ActivityType
     cost: float
     tip: Optional[str] = None
+    # Nombre propio del lugar real donde ocurre la actividad (lo propone el LLM).
+    place: Optional[str] = None
+    # Datos reales del lugar, completados tras consultar el servidor MCP de mapas.
+    location: Optional[PlaceLocation] = None
 
 
 @dataclass
