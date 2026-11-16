@@ -47,6 +47,25 @@ class _FakeNominatim(BaseHTTPRequestHandler):
     seen_user_agents: list[str] = []
 
     def do_GET(self):
+        path = urlparse(self.path).path
+        if path.startswith("/blocked"):
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path.startswith("/photon"):
+            data = json.dumps({"features": [{
+                "geometry": {"type": "Point", "coordinates": [-74.0721, 4.6019]},
+                "properties": {"osm_type": "W", "osm_id": 123, "name": "Museo del Oro",
+                               "street": "Carrera 6", "city": "Bogotá", "country": "Colombia",
+                               "osm_key": "tourism", "osm_value": "museum"},
+            }]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         q = parse_qs(urlparse(self.path).query).get("q", [""])[0].lower()
         q = q.replace("á", "a")
         _FakeNominatim.seen_user_agents.append(self.headers.get("User-Agent", ""))
@@ -102,7 +121,7 @@ def _act(title: str, place, type_: str = "culture") -> Activity:
 # ---------------------------------------------------------------- stdio (servidor propio)
 def test_local_stdio_server_lists_tools_and_searches(fake_nominatim):
     async def run():
-        svc = MCPPlacesService(mode="local")
+        svc = MCPPlacesService(mode="local", local_transport="stdio")
         tools = {t["name"] for t in await svc.list_tools()}
         assert {"search_places", "estimate_travel"} <= tools
         async with svc.session() as s:
@@ -122,13 +141,50 @@ def test_enricher_end_to_end_with_local_server(fake_nominatim):
         _act("Traslado al hotel", "Aeropuerto El Dorado", type_="transport"),
         _act("Tiempo libre", None),
     )
-    enricher = ItineraryPlacesEnricher(MCPPlacesService(mode="local"))
+    enricher = ItineraryPlacesEnricher(MCPPlacesService(mode="local", local_transport="stdio"))
     report = asyncio.run(enricher.enrich(it))
     acts = it.days[0].activities
     assert report.requested == 2 and report.verified == 1
     assert acts[0].location and acts[0].location.verified
     assert acts[1].location is None  # descartado por distancia
     assert acts[2].location is None and acts[3].location is None
+
+
+# ---------------------------------------------------------------- en memoria (modo por defecto)
+@pytest.fixture
+def ps_module(fake_nominatim, monkeypatch):
+    import mcp_servers.places_server as ps
+    monkeypatch.setattr(ps, "NOMINATIM_URL", fake_nominatim)
+    monkeypatch.setattr(ps, "MIN_SECONDS_BETWEEN_REQUESTS", 0)
+    ps._cache.clear()
+    return ps
+
+
+def test_inprocess_server_end_to_end(ps_module):
+    it = _itinerary(_act("Museo", "Museo del Oro"), _act("Plaza", "Plaza Botero"))
+    svc = MCPPlacesService(mode="local")  # inprocess por defecto
+    assert svc.local_transport == "inprocess"
+    report = asyncio.run(ItineraryPlacesEnricher(svc).enrich(it))
+    assert report.error is None and report.verified == 1
+    assert it.days[0].activities[0].location.name == "Museo del Oro"
+
+
+def test_photon_fallback_when_nominatim_blocks(ps_module, monkeypatch):
+    base = ps_module.NOMINATIM_URL.rsplit("/", 1)[0]
+    monkeypatch.setattr(ps_module, "NOMINATIM_URL", f"{base}/blocked")
+    monkeypatch.setattr(ps_module, "PHOTON_URL", f"{base}/photon")
+
+    async def run():
+        async with MCPPlacesService(mode="local").session() as s:
+            return await s.search("Museo del Oro, Bogotá")
+    [r] = asyncio.run(run())
+    assert r.name == "Museo del Oro" and "Carrera 6" in r.address and abs(r.longitude + 74.0721) < 1e-6
+
+
+def test_error_message_is_unwrapped():
+    from app.infrastructure.mcp.mcp_places_client import describe_error
+    err = ExceptionGroup("unhandled errors in a TaskGroup", [ModuleNotFoundError("No module named 'x'")])
+    assert describe_error(err) == "ModuleNotFoundError: No module named 'x'"
 
 
 # ---------------------------------------------------------------- HTTP (ruta remota tipo Google)

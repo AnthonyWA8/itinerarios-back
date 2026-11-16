@@ -11,7 +11,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.domain.services.places_service import GeoPoint
-from app.infrastructure.mcp.mcp_places_client import MCPPlacesService
+from app.infrastructure.mcp.mcp_places_client import MCPPlacesService, describe_error
 from app.presentation.api.dependencies import get_places_service
 
 router = APIRouter(prefix="/api/v1/places", tags=["places-mcp"])
@@ -37,7 +37,7 @@ async def mcp_status(service: PlacesDep):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"No se pudo conectar con el servidor MCP ({service.server_label}): {e}",
+            detail=f"No se pudo conectar con el servidor MCP ({service.server_label}): {describe_error(e)}",
         )
     return {"enabled": True, "mode": service.mode, "server": service.server_label, "tools": tools}
 
@@ -56,7 +56,7 @@ async def search_place(
         async with svc.session() as session:
             results = await session.search(q, limit=limit, near=near, radius_m=30000 if near else None)
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error en el servidor MCP: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error en el servidor MCP ({svc.server_label}): {describe_error(e)}")
     return {
         "mode": svc.mode,
         "results": [

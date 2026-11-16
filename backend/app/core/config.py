@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     MAPS_MCP_MODE: str = "auto"
     GOOGLE_MAPS_API_KEY: str = ""
     GOOGLE_MAPS_MCP_URL: str = "https://mapstools.googleapis.com/mcp"
+    MAPS_MCP_LOCAL_TRANSPORT: str = "inprocess"  # servidor propio: inprocess (en memoria) | stdio (subproceso)
     MAPS_MCP_TIMEOUT_SECONDS: float = 25.0  # tiempo máximo dedicado a verificar un itinerario
     MAPS_MAX_LOOKUPS: int = 10  # máximo de lugares a verificar por itinerario
     MAPS_MAX_DISTANCE_KM: float = 80.0  # descarta coincidencias lejos del destino

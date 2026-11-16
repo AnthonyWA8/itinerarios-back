@@ -34,6 +34,7 @@ Grounding Lite), así que se cambia de proveedor solo con configuración.
 | `MAPS_MCP_TIMEOUT_SECONDS` | `25` | Tiempo máximo de verificación por itinerario |
 | `MAPS_MAX_LOOKUPS` | `10` | Lugares máximos consultados por itinerario |
 | `MAPS_MAX_DISTANCE_KM` | `80` | Radio alrededor del destino |
+| `MAPS_MCP_LOCAL_TRANSPORT` | `inprocess` | Servidor propio: `inprocess` (dentro del backend, canal en memoria) o `stdio` (subproceso) |
 | `OSM_USER_AGENT` | `FuturePlannerItinerary/1.0 (+repo)` | Identificación ante Nominatim (política de uso de OSM) |
 
 Sin ninguna variable nueva, el backend ya funciona con el servidor propio (OpenStreetMap, gratis, sin key).
@@ -45,13 +46,15 @@ Sin ninguna variable nueva, el backend ya funciona con el servidor propio (OpenS
 - `search_places(text_query, page_size, location_bias, language_code)`: busca lugares en OpenStreetMap (Nominatim).
 - `estimate_travel(origin_*, destination_*, travel_mode)`: distancia y tiempo estimado entre dos puntos.
 
+Si Nominatim falla o bloquea la IP del servidor, usa como respaldo Photon (otro buscador sobre OpenStreetMap, sin key).
+
 Respeta la política de Nominatim: máximo 1 petición/segundo, User-Agent identificable, caché y atribución
 "© OpenStreetMap contributors".
 
 Ejecutarlo a mano:
 
 ```bash
-python -m mcp_servers.places_server          # stdio (así lo lanza el backend)
+python -m mcp_servers.places_server          # stdio
 python -m mcp_servers.places_server --http   # Streamable HTTP en http://127.0.0.1:8765/mcp
 npx @modelcontextprotocol/inspector python -m mcp_servers.places_server   # inspector visual
 ```

@@ -8,7 +8,10 @@ Protocol) con uno de estos dos servidores, que exponen la misma herramienta
   - google: servidor MCP oficial de Google Maps (Grounding Lite), remoto, por
     HTTP, autenticado con la cabecera X-Goog-Api-Key.
   - local:  servidor MCP propio del proyecto (mcp_servers/places_server.py),
-    basado en OpenStreetMap, que se lanza como subproceso y se comunica por stdio.
+    basado en OpenStreetMap. Por defecto corre dentro del mismo proceso del
+    backend y se comunica con el cliente por un canal en memoria (mismo
+    protocolo MCP, JSON-RPC). Con MAPS_MCP_LOCAL_TRANSPORT=stdio se lanza como
+    subproceso y se comunica por stdio.
 """
 
 import json
@@ -22,6 +25,7 @@ from typing import Any, AsyncIterator, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import get_default_environment, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.domain.services.places_service import (
     GeoPoint,
@@ -43,6 +47,13 @@ _FORWARDED_ENV = (
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
     "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE",
 )
+
+
+def describe_error(exc: BaseException) -> str:
+    """Devuelve la causa real de un error, desempaquetando los ExceptionGroup de anyio."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return f"{type(exc).__name__}: {exc}"
 
 
 def _extract_payload(result: Any) -> dict:
@@ -132,8 +143,10 @@ class MCPPlacesService(PlacesService):
         mode: str,
         google_api_key: str = "",
         google_url: str = "https://mapstools.googleapis.com/mcp",
+        local_transport: str = "inprocess",
     ):
         self.mode = mode  # "google" | "local"
+        self.local_transport = "stdio" if local_transport == "stdio" else "inprocess"
         self.source = "google" if mode == "google" else "openstreetmap"
         self._google_api_key = google_api_key
         self._google_url = google_url
@@ -153,13 +166,18 @@ class MCPPlacesService(PlacesService):
         if mode not in ("google", "local"):
             logger.warning("MAPS_MCP_MODE desconocido (%s): se usa el servidor MCP propio.", mode)
             mode = "local"
-        return cls(mode=mode, google_api_key=key, google_url=settings.GOOGLE_MAPS_MCP_URL)
+        return cls(
+            mode=mode,
+            google_api_key=key,
+            google_url=settings.GOOGLE_MAPS_MCP_URL,
+            local_transport=(getattr(settings, "MAPS_MCP_LOCAL_TRANSPORT", "inprocess") or "inprocess").lower(),
+        )
 
     @property
     def server_label(self) -> str:
         if self.mode == "google":
             return f"Google Maps Grounding Lite ({self._google_url})"
-        return "Servidor MCP propio future-places (OpenStreetMap, stdio)"
+        return f"Servidor MCP propio future-places (OpenStreetMap, {self.local_transport})"
 
     @asynccontextmanager
     async def _client_session(self) -> AsyncIterator[ClientSession]:
@@ -172,6 +190,11 @@ class MCPPlacesService(PlacesService):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     yield session
+        elif self.local_transport == "inprocess":
+            from mcp_servers.places_server import mcp as places_mcp
+
+            async with create_connected_server_and_client_session(places_mcp._mcp_server) as session:
+                yield session
         else:
             env = get_default_environment()
             env.update({k: v for k, v in os.environ.items() if k in _FORWARDED_ENV})

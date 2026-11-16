@@ -37,6 +37,8 @@ USER_AGENT = os.getenv(
     "OSM_USER_AGENT",
     "FuturePlannerItinerary/1.0 (+https://github.com/AnthonyWA8/itinerarios-back)",
 )
+# Respaldo si Nominatim no responde o bloquea la IP del servidor (otro geocodificador sobre OSM, sin key).
+PHOTON_URL = os.getenv("OSM_PHOTON_URL", "https://photon.komoot.io/api/")
 MIN_SECONDS_BETWEEN_REQUESTS = float(os.getenv("OSM_MIN_INTERVAL_SECONDS", "1.05"))
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("OSM_TIMEOUT_SECONDS", "10"))
 CACHE_SIZE = 512
@@ -101,6 +103,43 @@ async def _fetch_nominatim(params: dict[str, Any]) -> list[dict]:
     if len(_cache) > CACHE_SIZE:
         _cache.popitem(last=False)
     return results
+
+
+_PHOTON_OSM_TYPES = {"N": "node", "W": "way", "R": "relation"}
+
+
+async def _fetch_photon(text_query: str, limit: int, viewbox: str | None) -> list[dict]:
+    """Consulta Photon y convierte sus resultados (GeoJSON) al formato de Nominatim."""
+    params: dict[str, Any] = {"q": text_query, "limit": limit}
+    if viewbox:
+        min_lng, max_lat, max_lng, min_lat = viewbox.split(",")
+        params["bbox"] = f"{min_lng},{min_lat},{max_lng},{max_lat}"
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT}) as client:
+        response = await client.get(PHOTON_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+    items = []
+    for f in data.get("features") or []:
+        props = f.get("properties") or {}
+        coords = (f.get("geometry") or {}).get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        street = " ".join(x for x in (props.get("street"), props.get("housenumber")) if x)
+        parts = [props.get("name"), street, props.get("district"), props.get("city"),
+                 props.get("state"), props.get("country")]
+        address = ", ".join(dict.fromkeys(x for x in parts if x))
+        items.append({
+            "lat": coords[1],
+            "lon": coords[0],
+            "osm_type": _PHOTON_OSM_TYPES.get(props.get("osm_type"), "node"),
+            "osm_id": props.get("osm_id", ""),
+            "name": props.get("name"),
+            "display_name": address,
+            "category": props.get("osm_key"),
+            "type": props.get("osm_value"),
+        })
+    return items
 
 
 def _viewbox_from_bias(location_bias: dict | None) -> str | None:
@@ -189,7 +228,16 @@ async def search_places(
         params["viewbox"] = viewbox
         params["bounded"] = 1
 
-    items = await _fetch_nominatim(params)
+    try:
+        items = await _fetch_nominatim(params)
+    except (httpx.HTTPError, ValueError) as nominatim_error:
+        # Nominatim caído o bloqueando la IP: se intenta con Photon (también OpenStreetMap).
+        try:
+            items = await _fetch_photon(text_query, page_size, viewbox)
+        except (httpx.HTTPError, ValueError) as photon_error:
+            raise RuntimeError(
+                f"OpenStreetMap no respondió. Nominatim: {nominatim_error!r} | Photon: {photon_error!r}"
+            ) from photon_error
     places = [_to_place_view(i) for i in items if "lat" in i and "lon" in i]
     if places:
         names = ", ".join(p["displayName"]["text"] for p in places[:3])
