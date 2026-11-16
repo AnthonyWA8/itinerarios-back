@@ -176,6 +176,7 @@ class GroqLLMService(LLMService):
                         type=_parse_activity_type(a["type"]),
                         cost=float(a["cost"]),
                         tip=a.get("tip"),
+                        place=(a.get("place") or None) if isinstance(a.get("place"), str) else None,
                     )
                     for a in d["activities"]
                 ],

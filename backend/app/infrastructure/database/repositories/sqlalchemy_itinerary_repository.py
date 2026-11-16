@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from typing import Optional
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from app.domain.entities.itinerary import (
     BudgetType,
     DayPlan,
     Itinerary,
+    PlaceLocation,
     PracticalInfo,
     TravelPreferences,
 )
@@ -79,6 +81,8 @@ class SQLAlchemyItineraryRepository(ItineraryRepository):
                     "type": a.type.value,
                     "cost": a.cost,
                     "tip": a.tip,
+                    "place": a.place,
+                    "location": asdict(a.location) if a.location else None,
                 }
                 for a in day.activities
             ],
@@ -124,6 +128,8 @@ class SQLAlchemyItineraryRepository(ItineraryRepository):
                         type=a["type"],
                         cost=a["cost"],
                         tip=a.get("tip"),
+                        place=a.get("place"),
+                        location=PlaceLocation(**a["location"]) if a.get("location") else None,
                     )
                     for a in d["activities"]
                 ],

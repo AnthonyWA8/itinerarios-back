@@ -13,6 +13,8 @@ from app.infrastructure.security.password_hasher import PasswordHasher
 from app.infrastructure.security.jwt_handler import JWTHandler
 from app.infrastructure.llm.groq_client import GroqLLMService
 from app.infrastructure.rag.lightweight_retriever import LightweightRAGService
+from app.infrastructure.mcp.mcp_places_client import MCPPlacesService
+from app.core.config import settings
 
 from app.application.use_cases.auth.register_user import RegisterUserUseCase
 from app.application.use_cases.auth.login_user import LoginUserUseCase
@@ -26,6 +28,7 @@ from app.application.use_cases.itinerary.get_user_itineraries import (
 )
 from app.application.use_cases.itinerary.validate_itinerary import ItineraryValidator
 from app.application.use_cases.itinerary.reward_model import ItineraryRewardModel
+from app.application.use_cases.itinerary.enrich_itinerary import ItineraryPlacesEnricher
 from app.application.use_cases.feedback.submit_feedback import SubmitFeedbackUseCase
 
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
@@ -38,6 +41,19 @@ _jwt_handler = JWTHandler()
 _itinerary_validator = ItineraryValidator()
 _reward_model = ItineraryRewardModel()
 _llm_service = GroqLLMService()
+
+# MCP de mapas: servidor oficial de Google (si hay API key) o servidor propio (OpenStreetMap).
+_places_service = MCPPlacesService.from_settings(settings)
+_places_enricher = ItineraryPlacesEnricher(
+    _places_service,
+    max_lookups=settings.MAPS_MAX_LOOKUPS,
+    time_budget_seconds=settings.MAPS_MCP_TIMEOUT_SECONDS,
+    max_distance_km=settings.MAPS_MAX_DISTANCE_KM,
+)
+
+
+def get_places_service() -> MCPPlacesService | None:
+    return _places_service
 
 
 def get_jwt_handler() -> JWTHandler:
@@ -82,7 +98,9 @@ def get_generate_itinerary_use_case(
     rag: Annotated[LightweightRAGService, Depends(get_rag_service)],
     feedback_repo: Annotated[SQLAlchemyFeedbackRepository, Depends(get_feedback_repository)],
 ) -> GenerateItineraryUseCase:
-    return GenerateItineraryUseCase(_llm_service, rag, _itinerary_validator, _reward_model, feedback_repo)
+    return GenerateItineraryUseCase(
+        _llm_service, rag, _itinerary_validator, _reward_model, feedback_repo, _places_enricher
+    )
 
 
 def get_regenerate_itinerary_use_case(
@@ -94,7 +112,7 @@ def get_regenerate_itinerary_use_case(
 def get_refine_itinerary_use_case(
     itinerary_repo: Annotated[SQLAlchemyItineraryRepository, Depends(get_itinerary_repository)],
 ) -> RefineItineraryUseCase:
-    return RefineItineraryUseCase(_llm_service, itinerary_repo, _itinerary_validator)
+    return RefineItineraryUseCase(_llm_service, itinerary_repo, _itinerary_validator, _places_enricher)
 
 
 def get_save_itinerary_use_case(

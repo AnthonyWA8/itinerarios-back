@@ -83,7 +83,7 @@ async def save_itinerary(
     use_case: Annotated[SaveItineraryUseCase, Depends(get_save_itinerary_use_case)],
     user_id: Annotated[UUID, Depends(get_current_user_id)],
 ):
-    from app.presentation.api.v1.mappers import preferences_dto_to_entity
+    from app.presentation.api.v1.mappers import location_dto_to_entity, preferences_dto_to_entity
     from app.domain.entities.itinerary import (
         Activity, ActivityType, DayPlan, Itinerary, PracticalInfo,
     )
@@ -111,6 +111,8 @@ async def save_itinerary(
                         type=ActivityType(a.type),
                         cost=a.cost,
                         tip=a.tip,
+                        place=a.place,
+                        location=location_dto_to_entity(a.location),
                     )
                     for a in d.activities
                 ],

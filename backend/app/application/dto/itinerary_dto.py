@@ -17,6 +17,18 @@ class TravelPreferencesDTO(BaseModel):
         populate_by_name = True
 
 
+class LocationDTO(BaseModel):
+    """Ubicación real verificada vía MCP (Google Maps u OpenStreetMap)."""
+    name: str
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    url: Optional[str] = None
+    rating: Optional[float] = None
+    source: str = "openstreetmap"
+    verified: bool = True
+
+
 class ActivityDTO(BaseModel):
     time: str
     title: str
@@ -24,6 +36,8 @@ class ActivityDTO(BaseModel):
     type: Literal["food", "culture", "outdoor", "leisure", "transport", "accommodation"]
     cost: float
     tip: Optional[str] = None
+    place: Optional[str] = None
+    location: Optional[LocationDTO] = None
 
 
 class DayPlanDTO(BaseModel):

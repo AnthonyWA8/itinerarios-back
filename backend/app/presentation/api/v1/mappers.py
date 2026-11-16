@@ -1,5 +1,6 @@
 from app.application.dto.itinerary_dto import (
     ActivityDTO,
+    LocationDTO,
     DayPlanDTO,
     ItineraryDTO,
     PracticalInfoDTO,
@@ -8,8 +9,39 @@ from app.application.dto.itinerary_dto import (
 from app.domain.entities.itinerary import (
     BudgetType,
     Itinerary,
+    PlaceLocation,
     TravelPreferences,
 )
+
+
+def location_entity_to_dto(loc: PlaceLocation | None) -> LocationDTO | None:
+    if loc is None:
+        return None
+    return LocationDTO(
+        name=loc.name,
+        address=loc.address,
+        lat=loc.latitude,
+        lng=loc.longitude,
+        url=loc.url,
+        rating=loc.rating,
+        source=loc.source,
+        verified=loc.verified,
+    )
+
+
+def location_dto_to_entity(dto: LocationDTO | None) -> PlaceLocation | None:
+    if dto is None:
+        return None
+    return PlaceLocation(
+        name=dto.name,
+        address=dto.address,
+        latitude=dto.lat,
+        longitude=dto.lng,
+        url=dto.url,
+        rating=dto.rating,
+        source=dto.source,
+        verified=dto.verified,
+    )
 
 
 def preferences_dto_to_entity(dto: TravelPreferencesDTO) -> TravelPreferences:
@@ -47,6 +79,8 @@ def itinerary_entity_to_dto(itinerary: Itinerary) -> ItineraryDTO:
                         type=a.type.value if hasattr(a.type, "value") else a.type,
                         cost=a.cost,
                         tip=a.tip,
+                        place=a.place,
+                        location=location_entity_to_dto(a.location),
                     )
                     for a in d.activities
                 ],
